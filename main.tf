@@ -13,6 +13,7 @@ provider "aws" {
   region = var.aws_region
 }
 
+
 locals {
   availability_zones = ["${var.aws_region}a"]
 }
@@ -42,3 +43,10 @@ resource "aws_subnet" "public_subnet" {
     Environment = "${var.environment}"
   }
 }
+#EC2
+resource "aws_instance" "ec2_instance" {
+  ami           = var.ami_id
+  subnet_id     = "subnet-00f42627daf86c179"
+  instance_type = var.instance_type
+  key_name      = var.ami_key_pair_name
+} 
