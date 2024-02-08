@@ -11,12 +11,6 @@ variable "vpc_cidr" {
   description = "CIDR block of the vpc"
 }
 
-variable "public_subnets_cidr" {
-  type        = list(any)
-  default     = ["172.0.1.0/24", "172.0.2.0/24", "172.0.3.0/24"]
-  description = "CIDR block for Public Subnet"
-}
-
 variable "instance_name" {
         description = "Name of the instance to be created"
         default = "primbot-instance"
