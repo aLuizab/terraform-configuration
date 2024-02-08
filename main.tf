@@ -30,6 +30,13 @@ resource "aws_vpc" "vpc" {
   }
 }
 
+resource "aws_internet_gateway" "net-gtw" { 
+  vpc_id = aws_vpc.vpc.id
+  
+  tags = { 
+    Name = "NET-GTW" } 
+}
+
 # Public subnet
 resource "aws_subnet" "public_subnet" {
   vpc_id                  = aws_vpc.vpc.id
@@ -43,16 +50,24 @@ resource "aws_subnet" "public_subnet" {
     Environment = "${var.environment}"
   }
 }
+
 #EC2
-resource "aws_instance" "ec2_instance_1" {
-  ami           = var.ami_id
-  subnet_id     = "subnet-00f42627daf86c179"
-  instance_type = var.instance_type
-  key_name      = var.ami_key_pair_name
-} 
-resource "aws_instance" "ec2_instance_2" {
-  ami           = var.ami_id
-  subnet_id     = "subnet-00f42627daf86c179"
-  instance_type = var.instance_type
-  key_name      = var.ami_key_pair_name
-} 
+module "ec2_instance" {
+  source  = "terraform-aws-modules/ec2-instance/aws"
+
+  for_each = toset(["one", "two", "three"])
+
+  name = "instance-${each.key}"
+
+  ami                    = var.ami_id
+  instance_type          = var.instance_type
+  key_name               = var.ami_key_pair_name
+  monitoring             = true
+  vpc_security_group_ids = ["sg-12345678"]
+  subnet_id              = "subnet-00f42627daf86c179"
+
+  tags = {
+    Terraform   = "true"
+    Environment = "dev"
+  }
+}
