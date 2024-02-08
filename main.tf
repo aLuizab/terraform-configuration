@@ -1,57 +1,25 @@
-terraform {
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 4.16"
-    }
-  }
-
-  required_version = ">= 1.2.0"
-}
-
 provider "aws" {
   region = var.aws_region
 }
 
+data "aws_availability_zones" "available" {}
 
 locals {
-  availability_zones = ["${var.aws_region}a"]
+  Name = ["${var.aws_region}a", "${var.aws_region}b", "${var.aws_region}c"]
+  azs      = slice(data.aws_availability_zones.available.names, 0, 3)
+
+  user_data = <<-EOT
+    #!/bin/bash
+    sudo apt update -y &&
+    sudo apt install -y nginx
+    echo "Hello World" > /var/www/html/index.html
+  EOT
 }
 
-# VPC
-resource "aws_vpc" "vpc" {
-  cidr_block           = var.vpc_cidr
-  enable_dns_hostnames = true
-  enable_dns_support   = true
+#########################################################################
+# CRIA UM MODULO EC2 COM TRÊS INSTANCIAS
+#########################################################################
 
-  tags = {
-    Name        = "${var.environment}-vpc"
-    Environment = var.environment
-  }
-}
-
-resource "aws_internet_gateway" "net-gtw" { 
-  vpc_id = aws_vpc.vpc.id
-  
-  tags = { 
-    Name = "NET-GTW" } 
-}
-
-# Public subnet
-resource "aws_subnet" "public_subnet" {
-  vpc_id                  = aws_vpc.vpc.id
-  count                   = length(var.public_subnets_cidr)
-  cidr_block              = element(var.public_subnets_cidr, count.index)
-  availability_zone       = element(local.availability_zones, count.index)
-  map_public_ip_on_launch = true
-
-  tags = {
-    Name        = "${var.environment}-${element(local.availability_zones, count.index)}-public-subnet"
-    Environment = "${var.environment}"
-  }
-}
-
-#EC2
 module "ec2_instance" {
   source  = "terraform-aws-modules/ec2-instance/aws"
 
@@ -63,11 +31,64 @@ module "ec2_instance" {
   instance_type          = var.instance_type
   key_name               = var.ami_key_pair_name
   monitoring             = true
-  vpc_security_group_ids = ["sg-12345678"]
-  subnet_id              = "subnet-00f42627daf86c179"
+  subnet_id              = element(module.vpc.public_subnets, 0)
+  vpc_security_group_ids = [aws_security_group.ec2_secgp.id]
+
+  user_data_base64            = base64encode(local.user_data)
+  user_data_replace_on_change = true
 
   tags = {
     Terraform   = "true"
-    Environment = "dev"
+    Environment = var.environment
   }
 }
+#########################################################################
+# CRIA UM MODULO VPC COM UMA SUBNET PARA CADA AZ
+#########################################################################
+
+module "vpc" {
+  source  = "terraform-aws-modules/vpc/aws"
+
+  name = "VPC"
+  cidr = var.vpc_cidr
+
+  azs             = local.azs
+  public_subnets  = [for k, v in local.azs : cidrsubnet(var.vpc_cidr, 8, k + 48)]
+
+}
+
+#########################################################################
+# CRIA UM SECURITY GROUP
+#########################################################################
+
+resource "aws_security_group" "ec2_secgp" {
+  name        = "allow_http"
+  description = "Allow http inbound traffic"
+  vpc_id      = module.vpc.vpc_id
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port       = 0
+    to_port         = 0
+    protocol        = "-1"
+    cidr_blocks     = ["0.0.0.0/0"]
+  }
+  tags = {
+    Name = "primbot-ec2-security-group"
+  }
+}
+
+
